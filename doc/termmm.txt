@@ -48,11 +48,3 @@ of one or more of the following words/vim commands (colons not necessary):
 |:aboveleft|, |:topleft|, |:belowright|, |:botright|, |:vertical|. 
 
 Default value: 'belowright'
-
-                                                                 *g:termmm_size*
-g:termmm_size
-
-The height of the termmm-window. Or if |g:termmm_splittype| contains the
-word |vertical|, the width of the termmm-window. 
-
-Default value: 10 for splits and 80 for vsplits.
