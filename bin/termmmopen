@@ -1,0 +1,100 @@
+#! /bin/bash
+
+token='_vim_is_finished_'
+TERMMM_SPLIT="${TERMMM_SPLIT-aboveleft split}"
+waitFinish=0
+
+realpath() {
+    echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+}
+
+function waitN() {
+    local n="$1"
+    local result
+    trap ' ' INT
+    while [[ "$n" > 0 ]]; do
+        result=$(read -s result; printf '%s\n' "$result")
+        if [[ $? != 0 ]]; then
+            printf '\e]51;["call","Tapi_termmm_cancel_wait",[]]\a'
+            echo -n ^C
+            trap - INT
+            exit 1
+        fi
+        if [[ "$result" = "$token" ]]; then
+            n=$(("$n"-1))
+        fi
+    done
+    trap - INT
+}
+
+function openFile() {
+    printf '\e]51;["call","Tapi_termmm_open",["%s","%s","%s","%s"]]\a' \
+        "$TERMMM_SPLIT" "$waitFinish" "$1" "$token"
+}
+
+function usage() {
+    echo "termmmopen - open files in outer vim"
+    echo " "
+    echo "Usage:"
+    echo " "
+    echo "termmmopen [option]... [file]..."
+    echo " "
+    echo "Options:"
+    echo "   -s <cmd> | --splitcmd <cmd>"
+    echo "      Any command to be run before opening the file in a new buffer,"
+    echo "      such as 'split' 'belowright vsplit', 'tabedit'."
+    echo "      This overrides environment variable $TERMMM_SPLIT"
+    echo "   -w | --wait"
+    echo "      Wait for editing to complete before exiting"
+    exit 1
+}
+
+# read options
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -s|--splitcmd)
+            [[ "$#" -lt "2" ]] && usage
+            TERMMM_SPLIT="$2"
+            shift 2
+            ;;
+        -w|--wait)
+            waitFinish=1
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            usage
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ "$#" == "0" ]]; then
+    usage
+fi
+
+# process filenames
+
+if [[ -z "$NVIM_LISTEN_ADDRESS" ]]; then
+    # not nvim: use Vim8 terminal-api
+    nfiles="$#"
+    while [[ "$#" -gt 0 ]]; do
+        openFile $(realpath "$1")
+        shift
+    done
+    # if necessary, wait for editing to finish
+    [[ "$waitFinish" == "1" ]] && waitN "$nfiles"
+
+else
+    # nvim: use nvr
+    if [[ "$waitFinish" == 1 ]]; then
+        nvr -cc "$TERMMM_SPLIT" --remote-wait "$@"
+    else
+        nvr -cc "$TERMMM_SPLIT" --remote "$@"
+    fi
+fi

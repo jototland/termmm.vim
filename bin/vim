@@ -1,2 +1,2 @@
 #! /bin/bash
-$TERMMM_BASH sendbacktovim.sh openWait "$1"
+termmmopen -w "$@"

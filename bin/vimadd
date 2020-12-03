@@ -1,2 +1,0 @@
-#! /bin/bash
-$TERMMM_BASH sendbacktovim.sh open "$1"

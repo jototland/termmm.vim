@@ -8,53 +8,76 @@ if !has('nvim') && !has('terminal')
 endif
 
 let s:termmm_path=expand('<sfile>:p:h:h')
-
-function! s:getgitbash()
-    if exists("g:termmm_bash")
-        return g:termmm_bash
-    else
-        let gitlocation=exepath("git.exe")
-        if executable(gitlocation)
-            return fnamemodify(gitlocation, ':p:h:h') . '/bin/bash.exe'
-        else
-            return 'C:\\Program Files\Git\bin\bash.exe'
-        endif
-    endif
-endfunction
-execute 'echom "' .  s:getgitbash() . '"'
+let s:pathsep = has("win32") ? '\' : '/'
+let s:pathlistsep = has("win32") ? ';' : ':'
 
 augroup termmm
     autocmd!
-    autocmd BufWritePre * call s:finish(bufnr())
-    " autocmd BufUnload * call s:finish(expand("<afile>"))
-    autocmd BufHidden * call s:finish(expand("<afile>"))
+    autocmd BufWritePre * call termmm#finish(bufnr())
+    autocmd BufHidden * call termmm#finish(expand("<afile>"))
 augroup END
 
-function! Tapi_termmm_open_wait(bufno, arg)
-    let file = a:arg[0]
-    let token = a:arg[1]
-    execute 'aboveleft split ' . file
-    let b:termmm_waitingTerminal = a:bufno
-    let b:termmm_waitToken = token
-endfunction
-
-function! Tapi_termmm_cancel_wait(bufno, arg)
-    let bufno = bufnr(a:arg)
-    if bufno !=# -1
-        call remove(getbufvar(bufno, ''), 'termmm_waitingTerminal')
-        call remove(getbufvar(bufno, ''), 'termmm_waitToken')
-        execute bufno . 'bunload'
+function! Tapi_termmm_open(bufno, arg) abort
+    let splitCmd = a:arg[0]
+    let waitFinished = a:arg[1]
+    let fileToOpen = a:arg[2]
+    let token = a:arg[3]
+    let alreadyOpen = bufwinnr(bufnr(fileToOpen))
+    if alreadyOpen !=# -1
+        execute alreadyOpen . 'wincmd w'
+    else
+        if splitCmd ==# ''
+            execute 'edit ' . fileToOpen
+        else
+            execute splitCmd . ' ' . fileToOpen
+        endif
+    endif
+    if waitFinished ==# 1
+        let b:termmm_wait = get(b:, 'termmm_wait', [])
+        let b:termmm_wait = add(b:termmm_wait, {'buffer': a:bufno, 'token': token})
     endif
 endfunction
 
-function s:finish(buffer)
-    if bufexists(a:buffer)
-        let term = getbufvar(a:buffer, "termmm_waitingTerminal", 0)
-        let token = getbufvar(a:buffer, "termmm_waitToken", 0)
-        if term
-            call term_sendkeys(term, "\n" . token . "\n")
-            call remove(getbufvar(a:buffer, ''), 'termmm_waitingTerminal')
-            call remove(getbufvar(a:buffer, ''), 'termmm_waitToken')
+function! Tapi_termmm_cancel_wait(tbuf, arg)
+    if a:tbuf !=# -1
+        let buffers = filter(range(1, bufnr('$')), 'bufexists(v:val)')
+        for buf in buffers
+            let found = v:false
+            let waitlist = getbufvar(buf, 'termmm_wait', [])
+            let i = len(waitlist) - 1
+            while i >= 0
+                if waitlist[i]['buffer'] ==# a:tbuf
+                    let found = v:true
+                    call remove(waitlist, i)
+                endif
+                let i -= 1
+            endwhile
+            if len(waitlist) ==# 0
+                silent! call remove(gutbufvar(buf, ''), 'termmm_wait')
+                if found
+                    execute bufwinnr(buf) . 'hide'
+                endif
+            endif
+        endfor
+    endif
+endfunction
+
+function! termmm#finish(buffer) abort
+    if getbufvar(a:buffer, '&modified') == 1
+        throw "Save buffer first!"
+    endif
+    if has("nvim")
+        let nvrbufs = getbufvar(a:buffer, 'nvr', [])
+        for client in nvrbufs
+            silent! call rpcnotify(client, 'Exit', 1)
+        endfor
+    else
+        if bufexists(a:buffer)
+            let waitlist = getbufvar(a:buffer, 'termmm_wait', [])
+            for elem in waitlist
+                call term_sendkeys(elem['buffer'], "\n" . elem['token'] . "\n")
+            endfor
+            silent! call remove(getbufvar(a:buffer, ''), 'termmm_wait')
         endif
     endif
 endfunction
@@ -157,7 +180,7 @@ function! s:showOrToggle(toggle, name)
         let oldpath=$PATH
         let $TERMMM_PATH=s:termmm_path
         let $TERMMM_BASH=has('win32') ? s:getgitbash() : 'bash'
-        let $PATH=s:termmm_path . '/bin:' . $PATH
+        let $PATH=s:termmm_path . s:pathsep . 'bin' . s:pathlistsep . $PATH
         try
             if has("nvim")
                 execute 'terminal ' s:cmd(a:name)
@@ -175,5 +198,18 @@ function! s:showOrToggle(toggle, name)
     endif
     if s:nofocus(a:name)
         call win_gotoid(origWinId)
+    endif
+endfunction
+
+function! s:getgitbash()
+    if exists("g:termmm_bash")
+        return g:termmm_bash
+    else
+        let gitlocation=exepath("git.exe")
+        if executable(gitlocation)
+            return fnamemodify(gitlocation, ':p:h:h') . '\bin\bash.exe'
+        else
+            return 'C:\Program Files\Git\bin\bash.exe'
+        endif
     endif
 endfunction
