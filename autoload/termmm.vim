@@ -63,9 +63,6 @@ function! Tapi_termmm_cancel_wait(tbuf, arg)
 endfunction
 
 function! termmm#finish(buffer) abort
-    if getbufvar(a:buffer, '&modified') == 1
-        throw "Save buffer first!"
-    endif
     if has("nvim")
         let nvrbufs = getbufvar(a:buffer, 'nvr', [])
         for client in nvrbufs
