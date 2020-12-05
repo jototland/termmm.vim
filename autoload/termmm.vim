@@ -7,13 +7,13 @@ if !has('nvim') && !has('terminal')
     finish
 endif
 
-let s:termmm_path=expand('<sfile>:p:h:h')
+let s:termmm_path=expand('<sfile>:p:h:h') 
 let s:pathsep = has("win32") ? '\' : '/'
 let s:pathlistsep = has("win32") ? ';' : ':'
 
 augroup termmm
     autocmd!
-    autocmd BufWritePre * call termmm#finish(bufnr())
+    autocmd BufWritePost * call termmm#finish(bufnr())
     autocmd BufHidden * call termmm#finish(expand("<afile>"))
 augroup END
 
