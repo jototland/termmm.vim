@@ -80,8 +80,26 @@ fi
 
 # process filenames
 
-if [[ -z "$NVIM_LISTEN_ADDRESS" ]]; then
-    # not nvim: use Vim8 terminal-api
+if [[ -n "$NVIM_LISTEN_ADDRESS" ]]; then
+    # nvim: use nvr
+    if [[ "$waitFinish" == 1 ]]; then
+        nvr -cc "$TERMMM_SPLIT" --remote-wait "$@"
+    else
+        nvr -cc "$TERMMM_SPLIT" --remote "$@"
+    fi
+elif [[ -n "$TERMMM_SERVERNAME" ]]; then
+    # vim compiled with 'clientserver' feature, use it
+    if [[ "$waitFinish" == 1 ]]; then
+        "$TERMMM_VIMPATH" --servername "$TERMMM_SERVERNAME" \
+            --remote-send '<c-\><c-n>:split<cr>' \
+            --remote-wait "$@"
+    else
+        "$TERMMM_VIMPATH" --servername "$TERMMM_SERVERNAME" \
+            --remote-send '<c-\><c-n>:split<cr>' \
+            --remote "$@"
+    fi
+else
+    # not nvim, not clientserver: use Vim8 terminal-api
     nfiles="$#"
     while [[ "$#" -gt 0 ]]; do
         openFile $(realpath "$1")
@@ -90,11 +108,4 @@ if [[ -z "$NVIM_LISTEN_ADDRESS" ]]; then
     # if necessary, wait for editing to finish
     [[ "$waitFinish" == "1" ]] && waitN "$nfiles"
 
-else
-    # nvim: use nvr
-    if [[ "$waitFinish" == 1 ]]; then
-        nvr -cc "$TERMMM_SPLIT" --remote-wait "$@"
-    else
-        nvr -cc "$TERMMM_SPLIT" --remote "$@"
-    fi
 fi

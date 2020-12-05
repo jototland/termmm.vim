@@ -13,8 +13,7 @@ let s:pathlistsep = has("win32") ? ';' : ':'
 
 augroup termmm
     autocmd!
-    autocmd BufWritePost * call termmm#finish(bufnr())
-    autocmd BufHidden * call termmm#finish(expand("<afile>"))
+    autocmd BufUnload * call termmm#finish(expand("<afile>"))
 augroup END
 
 function! Tapi_termmm_open(bufno, arg) abort
@@ -64,10 +63,12 @@ endfunction
 
 function! termmm#finish(buffer) abort
     if has("nvim")
-        let nvrbufs = getbufvar(a:buffer, 'nvr', [])
-        for client in nvrbufs
-            silent! call rpcnotify(client, 'Exit', 1)
-        endfor
+        " let nvrbufs = getbufvar(a:buffer, 'nvr', [])
+        " for client in nvrbufs
+        "     silent! call rpcnotify(client, 'Exit', 1)
+        " endfor
+    elseif has('clientserver')
+        " FIXME: loop: execute buffer . 'bunload'
     else
         if bufexists(a:buffer)
             let waitlist = getbufvar(a:buffer, 'termmm_wait', [])
@@ -177,6 +178,10 @@ function! s:showOrToggle(toggle, name)
         let oldpath=$PATH
         let $TERMMM_PATH=s:termmm_path
         let $TERMMM_BASH=has('win32') ? s:getgitbash() : 'bash'
+        if has('clientserver')
+            let $TERMMM_VIMPATH=v:progpath
+            let $TERMMM_SERVERNAME=v:servername
+        endif
         let $PATH=s:termmm_path . s:pathsep . 'bin' . s:pathlistsep . $PATH
         try
             if has("nvim")
