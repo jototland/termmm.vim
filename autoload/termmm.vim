@@ -192,6 +192,7 @@ function! s:showOrToggle(toggle, name)
         execute 'file termmm://' . a:name
         setlocal nonumber
         setlocal signcolumn=
+        setlocal nobuflisted
     endif
     if s:nofocus(a:name)
         call win_gotoid(origWinId)
