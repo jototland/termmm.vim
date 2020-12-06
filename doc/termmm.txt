@@ -1,4 +1,4 @@
-*termmm.txt* quick toggling of terminals
+*termmm.txt* User-friendly terminal wrapper for vim
 
                                                                         *termmm*
 INTRODUCTION
@@ -111,6 +111,6 @@ Default value: 'belowright split'
 $TERMMM_SPLIT
 
 Before opening a buffer in vim from termmm, you typically want to split the
-terminal window. `$TERMMM_SPLIT@ specified which command to use.
+terminal window. `$TERMMM_SPLIT` specifies which command to use.
 
 Default value: 'aboveleft split`
