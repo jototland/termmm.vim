@@ -1,50 +1,102 @@
 termmm
 ---
-quick toggling of vim/neovim terminals
+User-friendly terminal wrapper for vim
 
 Introduction
 ---
+This plugin contains contains mappings and commands to simplify working with
+terminals in neovim and Vim 8. 
 
-This plugin contains contains mappings and commands to quickly toggle terminal
-windows of different names and commands.
+All terminals managed by termmm will be 'hidden' and 'unlisted', with
+filetype 'termmm' and buffer name set as 'termmm://{name}'. (From now on, we
+will call themm termmms).
 
-The actual name of the terminal will be 'termmm://{name}'.
-The filetype will be 'termmm'
+You can start a termmm by using the command `:e termmm://{name}`
 
-`Ttoggle [{name}]`
-`Tshow [{name}]`
-`Thide`
+Each termmm name can be configured to run a certain command, and whether it
+should take focus or not. 
 
-Ttoggle toggles visibility of terminal {name}.
-Tshow ensures visibility of terminal {name}.
-Thide hides all terminals managed by termmm.
+See g:termmm_config below for details.
+
+    :Tstart
+    :Tkill
+    :Trestart
+
+These commands can be used to start, kill, or restart termmms. Most of the time
+you will instead use `Tshow`, `Thide` and `Ttoggle`, as the terminal is
+automatically started the first time it is shown.
+
+    Tshow [{name}]
+    Thide [{name}]
+    Ttoggle [{name}]
+    ThideAll
+
+Quickly show, hide, and toggle termmms with these commands. 
+
+    Tls
+
+`Tls` lists existing termmms.
+
+    $ termmmopen [options]... [file]...
+    $ vim [file]...
+    $ nvim [file]...
+    :Tfinish
+
+Inside termmm, $PATH is modified. When you enter the `vim` or `nvim` command,
+the file is opened in the outer vim instead. `vim` or `nvim` will wait untill
+editing is complete before completing themselves.
+
+To signal that you are done editing, either bunload the buffer, or use the
+:Tfinish command.
+
+Both `vim` and `nvim` calls the shell script `termmmopen`. You can call `termmmopen`
+directly yourself. This is useful if you do not want to wait at the command
+line until editing is complete.
+
+Note: 
+
+Microsoft windows: `git bash` must be installed. (See also g:termmm_bash)
+
+Neovim: `neovim remote` must be installed and in $PATH
 
 Configuration
 ---
 
-`g:termmm_config`
+    g:termmm_config
 
 This configuration variable allows you to store configuration for certain named
 termmms. Is is a dictionary (by name), each value being a dictionary
 with configuration settings for the termmmof that name.
 
-Example configuration:
+Example configuration: 
 
     let g:termmm_config = get(g:, 'termmm_config', {})
     let g:termmm_config['python'] = {'cmd':'python3', 'nofocus':1}
     let g:termmm_config['R'] = {'cmd':'R --vanilla --quiet', 'nofocus':1}
 
-
-The 'cmd' key stores the command to be run whenever you start that terminal.
+The 'cmd' key stores the command to be run whenever you start that termmm.
 
 If the 'nofocus' key is true, the termmm will not automatically get focus,
-when it is visible.
+when it is shown.
 
-`g:termmm_splittype`
+    g:termmm_bash
 
-The command modifiers to use when splitting the window to show a terminal.
-Valid values is either an empty string, or a space separated string consisting
-of one or more of the following words/vim commands (colons not necessary):
-|:aboveleft|, |:topleft|, |:belowright|, |:botright|, |:vertical|. 
+The shellscript `opentermmm` is written in bash. On Windows bash is not
+included, but most vim users probably have git-bash installed. termmm tries to
+find git bash automatically, but if it fails, you can set `g:termmm_bash` to
+the path where git bash exists.
 
-Default value: 'belowright'
+
+    g:termmm_splitcmd
+
+Before showing a termmm, you typically want to split the current window.
+`g:termmm_splitcmd` specifies which command to use.
+
+Default value: 'belowright split'
+
+    $TERMMM_SPLIT
+
+Before opening a buffer in vim from termmm, you typically want to split the
+terminal window. `$TERMMM_SPLIT` specifies which command to use.
+
+Default value: 'aboveleft split`

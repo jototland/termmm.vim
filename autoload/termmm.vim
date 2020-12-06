@@ -7,15 +7,6 @@ if !has('nvim') && !has('terminal')
     finish
 endif
 
-let s:termmm_path=expand('<sfile>:p:h:h') 
-let s:pathsep = has("win32") ? '\' : '/'
-let s:pathlistsep = has("win32") ? ';' : ':'
-
-augroup termmm
-    autocmd!
-    autocmd BufUnload * call termmm#finish(expand("<afile>"))
-augroup END
-
 function! Tapi_termmm_open(bufno, arg) abort
     let splitCmd = a:arg[0]
     let waitFinished = a:arg[1]
@@ -34,6 +25,10 @@ function! Tapi_termmm_open(bufno, arg) abort
     if waitFinished ==# 1
         let b:termmm_wait = get(b:, 'termmm_wait', [])
         let b:termmm_wait = add(b:termmm_wait, {'buffer': a:bufno, 'token': token})
+        augroup termmm_waitfinished
+            autocmd! * <buffer>
+            autocmd BufUnload <buffer> call s:onUnloadBuffer(expand("<afile>"))
+        augroup END
     endif
 endfunction
 
@@ -62,14 +57,36 @@ function! Tapi_termmm_cancel_wait(tbuf, arg)
 endfunction
 
 function! termmm#finish(buffer) abort
+    let origHidden = getbufvar(a:buffer, '&hidden')
+    call setbufvar(a:buffer, '&hidden', 1)
+    let winList = win_findbuf(a:buffer)
+    tabnew
+    let newbuf = bufnr()
+    tabclose
+    let pos = {}
+    for win in winList
+        call win_execute(win, 'let pos[win] = getcurpos()')
+        call win_execute(win, 'noautocmd ' . newbuf . 'buffer')
+    endfor
+    execute a:buffer . 'bunload'
+    for win in winList
+        call win_execute(win, a:buffer . 'buffer')
+        call win_execute(win, 'call setpos(".", pos[win])')
+    endfor
+    execute newbuf . 'bwipe'
+    call setbufvar(a:buffer, '&hidden', origHidden)
+endfunction
+
+function! s:onUnloadBuffer(buffer) abort
     if has("nvim")
-        " let nvrbufs = getbufvar(a:buffer, 'nvr', [])
-        " for client in nvrbufs
-        "     silent! call rpcnotify(client, 'Exit', 1)
-        " endfor
+        let nvrbufs = getbufvar(a:buffer, 'nvr', [])
+        for client in nvrbufs
+            silent! call rpcnotify(client, 'Exit', 1)
+        endfor
     elseif has('clientserver')
-        " FIXME: loop: execute buffer . 'bunload'
-    else
+        " do nothing
+    else 
+        " Vim8 terminal api
         if bufexists(a:buffer)
             let waitlist = getbufvar(a:buffer, 'termmm_wait', [])
             for elem in waitlist
@@ -80,139 +97,197 @@ function! termmm#finish(buffer) abort
     endif
 endfunction
 
-function! termmm#show(...) abort
-    call s:showOrToggle(0, a:0 ? a:1 : 'unnamed')
+function! s:name(name) abort
+    return substitute(a:name, '^termmm://\(.*\)$', '\1', '')
 endfunction
 
-function! termmm#toggle(...) abort
-    call s:showOrToggle(1, a:0 ? a:1 : 'unnamed')
+function! s:tname(name) abort
+    if a:name =~# '^termmm://.*$'
+        return a:name
+    else
+        return 'termmm://' . a:name
+    endif
 endfunction
 
-function! termmm#hide() abort
-    let origWinId = win_getid()
-    let i = winnr('$')
-    while i > 0
-        execute i . 'wincmd w'
-        if &filetype ==# 'termmm'
-            hide
+function! s:tbuf(name) abort
+    return bufnr(s:tname(a:name))
+endfunction
+
+function! termmm#show(name) abort
+    let tbuf = s:tbuf(a:name)
+    let windowIDs = win_findbuf(tbuf)
+    if len(windowIDs) > 0
+        call win_gotoid(windowIDs[1])
+    else
+        execute s:splitcmd()
+        if tbuf !=# -1
+            execute tbuf . 'buffer'
+        else
+            call termmm#start(a:name)
         endif
-        let i -= 1
-    endwhile
-    call win_gotoid(origWinId)
+    endif
 endfunction
 
-function! termmm#kill(...) abort
-    let tbuf = bufnr('termmm://' . (a:0 ? a:1 : 'unnamed'))
-    if tbuf !=# -1
+function! termmm#hide(name) abort
+    let tbuf = s:tbuf(a:name)
+    let windowIds = win_findbuf(tbuf)
+    for win in windowIds
+        call win_execute(win, 'wincmd c')
+    endfor
+endfunction
+
+function! termmm#hideAll() abort
+    let tnames = termmm#enumerate()
+    for tname in tnames
+        call termmm#hide(tname)
+    endfor
+endfunction
+
+function! termmm#visible(name) abort
+    return len(win_findbuf(s:tbuf(a:name))) > 0
+endfunction
+
+function! termmm#exists(name) abort
+    let tname = s:tname(a:name)
+    let buffer = s:tbuf(tname)
+    return buffer !=# -1 &&
+        \ getbufvar(buffer, '&buftype') ==# 'terminal' &&
+        \ bufname(buffer) ==# tname
+endfunction
+
+function! termmm#toggle(name) abort
+    if termmm#visible(a:name)
+        call termmm#hide(a:name)
+    else
+        call termmm#show(a:name)
+    endif
+endfunction
+
+function! termmm#enumerate() abort
+    let buffers = filter(range(1, bufnr('$')), 'bufexists(v:val)')
+    call filter(buffers, 'bufname(v:val) =~# "^termmm://.*$"')
+    call map(buffers, 's:name(bufname(v:val))')
+    return buffers
+endfunction
+
+function! termmm#ls() abort
+    for buf in termmm#enumerate()
+        echo buf
+    endfor
+endfunction
+
+let s:termmm_path=expand('<sfile>:p:h:h') 
+let s:pathsep = has("win32") ? '\' : '/'
+let s:pathlistsep = has("win32") ? ';' : ':'
+
+let s:orig_path = $PATH
+let s:new_path = s:termmm_path . s:pathsep . 'bin' . s:pathlistsep . s:orig_path
+
+let $TERMMM_PATH=s:termmm_path
+
+if has('clientserver')
+    let $TERMMM_VIMPATH=v:progpath
+endif
+
+function! s:getgitbash()
+    if exists("g:termmm_bash")
+        return g:termmm_bash
+    else
+        let git=exepath("git.exe")
+        let gitbash = fnamemodify(git, ':p:h:h') . '\bin\bash.exe'
+        if executable(gitbash)
+            return gitbash
+        else
+            return 'C:\Program Files\Git\bin\bash.exe'
+        endif
+    endif
+endfunction
+let $TERMMM_BASH=has('win32') ? s:getgitbash() : 'bash'
+
+function! termmm#start(name) abort
+    if termmm#exists(a:name)
+        call s:errmsg('termmm ' . a:name . ' already exists')
+        return
+    endif
+    try
+        let $PATH=s:new_path
+        if has("nvim")
+            execute 'terminal ' s:cmd(a:name)
+            execute 'file! ' . s:tname(a:name)
+        else
+            call term_start(s:cmd(a:name), {'term_name': s:tname(a:name),
+            \ 'curwin': 1, 'norestore': 1, 'term_kill': 'term',
+            \ 'term_finish': 'close'})
+        endif
+    catch
+        call s:errmsg('An exception occured running the command: ' . s:cmd(a:name))
+        return
+    finally
+        let $PATH=s:orig_path
+    endtry
+    setlocal filetype=termmm
+    setlocal nonumber
+    setlocal signcolumn=
+    setlocal nobuflisted
+endfunction
+
+function! termmm#kill(name) abort
+    let tbuf = s:tbuf(a:name)
+    if tbuf ==# -1
+        call s:errmsg('termmmm ' . a:name . ' doesn''t exist')
+        return
+    else
         execute tbuf . 'bwipe!'
     endif
 endfunction
 
-function! termmm#restart(...) abort
-    call call('termmm#kill', a:000)
-    call call('termmm#show', a:000)
-endfunction
-
-function! s:splittype() abort
-    if exists("g:termmm_splittype")
-        if g:termmm_splittype =~
-            \ '\%(\<\%(' .
-            \ 'aboveleft|leftabove|abo|lefta' .
-            \ '|topleft|to' .
-            \ '|belowright|rightbelow|bel|rightb' .
-            \ '|botright|bot' .
-            \ '|vertical|vert' .
-            \ '|tab' .
-            \ '\)\>\s*\)*'
-            return g:termmm_splittype . ' '
-        else
-            echom "Invalid value for g:termmm_splittype: '" .
-                \ g:termmm_splittype . "'"
-            return 'belowright '
-        endif
-    else
-        return 'belowright '
+function! termmm#restart(name) abort
+    if termmm#exists(a:name)
+        call call('termmm#kill', a:name)
     endif
+    call call('termmm#start', a:name)
 endfunction
 
-function! s:vertical() abort
-    if s:splittype() =~# '\<vertical\>'
-        return 'vertical '
+function! s:splitcmd() abort
+    if exists("g:termmm_splitcmd")
+        return g:termmm_splitcmd
     else
-        return ''
+        return 'belowright split'
     endif
 endfunction
 
 function! s:cmd(name) abort
-    if exists("g:termmm_config[a:name]['cmd']")
-        return g:termmm_config[a:name]['cmd']
+    let name = s:name(a:name)
+    if exists("g:termmm_config[name]['cmd']")
+        return g:termmm_config[name]['cmd']
     else
         return &shell
     endif
 endfunction
 
 function! s:nofocus(name) abort
-    if exists("g:termmm_config[a:name]['nofocus']")
-        return g:termmm_config[a:name]['nofocus']
+    let name = s:name(a:name)
+    if exists("g:termmm_config[name]['nofocus']")
+        return g:termmm_config[name]['nofocus']
     else
         return 0
     endif
 endfunction
 
-function! s:showOrToggle(toggle, name)
-    let origWinId = win_getid()
-    let tbuf = bufnr('termmm://' . a:name)
-    let windowIDs = win_findbuf(tbuf)
-    if len(windowIDs) > 0
-        if a:toggle
-            for id in windowIDs
-                execute win_id2win(id) . 'wincmd c'
-            endfor
-        endif
-        return
-    endif
-    execute s:splittype() . 'split'
-    if tbuf !=# -1
-        execute tbuf . 'buffer'
-    else
-        let oldpath=$PATH
-        let $TERMMM_PATH=s:termmm_path
-        let $TERMMM_BASH=has('win32') ? s:getgitbash() : 'bash'
-        if has('clientserver')
-            let $TERMMM_VIMPATH=v:progpath
-            let $TERMMM_SERVERNAME=v:servername
-        endif
-        let $PATH=s:termmm_path . s:pathsep . 'bin' . s:pathlistsep . $PATH
-        try
-            if has("nvim")
-                execute 'terminal ' s:cmd(a:name)
-            else
-                execute 'terminal ++close ++norestore ++kill=term ++curwin ' . 
-                    \ s:cmd(a:name)
-            endif
-        finally
-            let $PATH=oldpath
-        endtry
-        setlocal filetype=termmm
-        execute 'file termmm://' . a:name
-        setlocal nonumber
-        setlocal signcolumn=
-        setlocal nobuflisted
-    endif
-    if s:nofocus(a:name)
-        call win_gotoid(origWinId)
-    endif
+function termmm#complete(arglead, cmdline, cursorpos) abort
+    let compl = keys(get(g:, 'termmm_config', {}))
+    call extend(compl, termmm#enumerate())
+    call sort(compl)
+    call uniq(compl)
+    return filter(compl, "v:val =~# '^" . a:arglead . "'")
 endfunction
 
-function! s:getgitbash()
-    if exists("g:termmm_bash")
-        return g:termmm_bash
-    else
-        let gitlocation=exepath("git.exe")
-        if executable(gitlocation)
-            return fnamemodify(gitlocation, ':p:h:h') . '\bin\bash.exe'
-        else
-            return 'C:\Program Files\Git\bin\bash.exe'
-        endif
-    endif
+function s:quote(str) abort
+    return "'" . substitute(a:str, "'", "''", 'g') . "'"
+endfunction
+
+function! s:errmsg(msg) abort
+    echohl ErrorMsg
+    execute 'echomsg ' . s:quote(a:msg)
+    echohl None
 endfunction
