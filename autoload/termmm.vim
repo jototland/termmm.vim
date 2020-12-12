@@ -1,5 +1,5 @@
 if exists("g:autoloaded_termmm")
-    " finish
+    finish
 endif
 let g:autoloaded_termmm = 1
 
@@ -114,6 +114,7 @@ function! s:tbuf(name) abort
 endfunction
 
 function! termmm#show(name) abort
+    let oldWinId = win_getid()
     let tbuf = s:tbuf(a:name)
     let windowIDs = win_findbuf(tbuf)
     if len(windowIDs) > 0
@@ -125,6 +126,9 @@ function! termmm#show(name) abort
         else
             call termmm#start(a:name)
         endif
+    endif
+    if s:nofocus(a:name)
+        call win_gotoid(oldWinId)
     endif
 endfunction
 
@@ -274,7 +278,7 @@ function! s:nofocus(name) abort
     endif
 endfunction
 
-function termmm#complete(arglead, cmdline, cursorpos) abort
+function! termmm#complete(arglead, cmdline, cursorpos) abort
     let compl = keys(get(g:, 'termmm_config', {}))
     call extend(compl, termmm#enumerate())
     call sort(compl)
